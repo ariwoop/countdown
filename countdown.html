@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>60초 비주얼 타이머</title>
+    <style>
+        body { 
+            margin: 0; padding: 0; overflow: hidden; 
+            background-color: #000; 
+            display: flex; align-items: center; justify-content: center;
+            height: 100vh; font-family: 'Apple SD Gothic Neo', sans-serif;
+            user-select: none;
+            touch-action: none; 
+        }
+        #bg-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; z-index: 1; }
+        .bar { flex: 1; height: 100%; background-color: #FF9F00; transition: background-color 0.1s ease; }
+        .bar.off { background-color: #000; }
+        #content { position: relative; z-index: 10; text-align: center; color: white; text-shadow: 0px 4px 15px rgba(0,0,0,0.8); pointer-events: none; transition: transform 0.05s ease; }
+        #timer { font-size: 160px; font-weight: 900; margin: 0; line-height: 1; }
+        .warning { color: #ffeb3b !important; }
+        /* 안내 문구 추가 */
+        #msg { position: fixed; bottom: 30px; font-size: 18px; color: rgba(255,255,255,0.4); z-index: 11; }
+    </style>
+</head>
+<body id="main-body" ontouchstart="handleMultiTouch(event)">
+
+    <div id="bg-container"></div>
+    <div id="content"><p id="timer">60</p></div>
+    <div id="msg">화면을 터치하면 시작/리셋됩니다</div>
+
+    <script>
+        let timeLeft = 60;
+        let timerId = null;
+        let isProcessing = false; // 중복 터치 방지 플래그
+        const container = document.getElementById('bg-container');
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        for (let i = 0; i < 60; i++) {
+            const bar = document.createElement('div');
+            bar.classList.add('bar');
+            bar.id = `bar-${i}`;
+            container.appendChild(bar);
+        }
+
+        function playSound(freq, duration, vol = 0.5, type = 'triangle') {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type; 
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.02); 
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function handleMultiTouch(event) {
+            if (event && event.cancelable) event.preventDefault();
+            
+            // 0.3초 이내의 추가 터치는 무시
+            if (isProcessing) return;
+            isProcessing = true;
+            setTimeout(() => { isProcessing = false; }, 300);
+
+            // 첫 터치 시 전체화면 시도
+            const doc = window.document;
+            const docEl = doc.documentElement;
+            if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
+                const requestFS = docEl.requestFullscreen || docEl.webkitRequestFullScreen;
+                if (requestFS) requestFS.call(docEl).catch(() => {});
+            }
+
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            // 리셋 소리 (한 번만 재생됨)
+            playSound(880, 0.5, 0.5, 'triangle'); 
+            
+            const content = document.getElementById('content');
+            content.style.transform = "scale(1.3)";
+            setTimeout(() => { content.style.transform = "scale(1)"; }, 100);
+
+            document.getElementById('msg').style.display = 'none';
+            resetTimer();
+            startTimer();
+        }
+
+        function startTimer() {
+            if (timerId !== null) return;
+            timerId = setInterval(() => {
+                timeLeft--;
+                updateDisplay();
+                if (timeLeft <= 5 && timeLeft > 0) {
+                    document.getElementById('timer').classList.add('warning');
+                    playSound(440, 0.15, 0.2, 'sine'); 
+                }
+                if (timeLeft <= 0) {
+                    clearInterval(timerId);
+                    document.getElementById('timer').innerText = "0";
+                    playFinalAlarm(); 
+                    if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
+                }
+            }, 1000);
+        }
+
+        function updateDisplay() {
+            document.getElementById('timer').innerText = timeLeft;
+            const barsToOff = 60 - timeLeft;
+            for (let i = 0; i < 60; i++) {
+                const bar = document.getElementById(`bar-${59 - i}`);
+                if (i < barsToOff) {
+                    bar.classList.add('off');
+                } else {
+                    bar.classList.remove('off');
+                }
+            }
+        }
+
+        function resetTimer() {
+            clearInterval(timerId);
+            timerId = null;
+            timeLeft = 60;
+            document.getElementById('timer').classList.remove('warning');
+            updateDisplay();
+        }
+
+        function playFinalAlarm() {
+            playSound(523.25, 0.6, 0.4, 'triangle');
+            playSound(659.25, 0.6, 0.4, 'triangle');
+            setTimeout(() => {
+                playSound(698.46, 0.6, 0.4, 'triangle');
+                playSound(880.00, 0.6, 0.4, 'triangle');
+            }, 400);
+            setTimeout(() => {
+                playSound(1046.50, 1.2, 0.5, 'triangle');
+                playSound(1567.98, 1.2, 0.3, 'sine');
+            }, 800);
+        }
+    </script>
+</body>
+</html>
