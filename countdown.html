@@ -21,11 +21,10 @@
         #content { position: relative; z-index: 10; text-align: center; color: white; text-shadow: 0px 4px 15px rgba(0,0,0,0.8); pointer-events: none; transition: transform 0.05s ease; }
         #timer { font-size: 160px; font-weight: 900; margin: 0; line-height: 1; }
         .warning { color: #ffeb3b !important; }
-        /* 안내 문구 추가 */
         #msg { position: fixed; bottom: 30px; font-size: 18px; color: rgba(255,255,255,0.4); z-index: 11; }
     </style>
 </head>
-<body id="main-body" ontouchstart="handleMultiTouch(event)">
+<body id="main-body" ontouchstart="handleMultiTouch(event)" onclick="handleMultiTouch(event)">
 
     <div id="bg-container"></div>
     <div id="content"><p id="timer">60</p></div>
@@ -34,10 +33,11 @@
     <script>
         let timeLeft = 60;
         let timerId = null;
-        let isProcessing = false; // 중복 터치 방지 플래그
+        let isProcessing = false;
         const container = document.getElementById('bg-container');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
+        // 바 생성
         for (let i = 0; i < 60; i++) {
             const bar = document.createElement('div');
             bar.classList.add('bar');
@@ -45,13 +45,14 @@
             container.appendChild(bar);
         }
 
+        // 기본 사운드 함수
         function playSound(freq, duration, vol = 0.5, type = 'triangle') {
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.type = type; 
             osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
             gain.gain.setValueAtTime(0, audioCtx.currentTime);
-            gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.02); 
+            gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.01); 
             gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
             osc.connect(gain);
             gain.connect(audioCtx.destination);
@@ -59,26 +60,45 @@
             osc.stop(audioCtx.currentTime + duration);
         }
 
+        // 맑은 종소리 구현
+        function playBellSound() {
+            const now = audioCtx.currentTime;
+            // 고음역대의 여러 주파수를 섞어 맑은 종소리 재현
+            [1567.98, 2093.00, 3135.96].forEach((freq, i) => {
+                playSound(freq, 1.5, 0.2 - (i * 0.05), 'sine');
+            });
+        }
+
+        // 한국어 음성 출력 함수
+        function speakNumber(num) {
+            window.speechSynthesis.cancel();
+            
+            const numbers = ["", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구", "십"];
+            const msg = new SpeechSynthesisUtterance(numbers[num]);
+            msg.lang = 'ko-KR';
+            msg.rate = 1.4; 
+            msg.pitch = 1.0;
+            
+            window.speechSynthesis.speak(msg);
+        }
+
         function handleMultiTouch(event) {
             if (event && event.cancelable) event.preventDefault();
-            
-            // 0.3초 이내의 추가 터치는 무시
             if (isProcessing) return;
             isProcessing = true;
             setTimeout(() => { isProcessing = false; }, 300);
 
-            // 첫 터치 시 전체화면 시도
+            // 전체화면 처리
             const doc = window.document;
-            const docEl = doc.documentElement;
             if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
-                const requestFS = docEl.requestFullscreen || docEl.webkitRequestFullScreen;
-                if (requestFS) requestFS.call(docEl).catch(() => {});
+                const requestFS = doc.documentElement.requestFullscreen || doc.documentElement.webkitRequestFullScreen;
+                if (requestFS) requestFS.call(doc.documentElement).catch(() => {});
             }
 
             if (audioCtx.state === 'suspended') audioCtx.resume();
             
-            // 리셋 소리 (한 번만 재생됨)
-            playSound(880, 0.5, 0.5, 'triangle'); 
+            // 시작 시 맑은 종소리 재생
+            playBellSound();
             
             const content = document.getElementById('content');
             content.style.transform = "scale(1.3)";
@@ -91,13 +111,23 @@
 
         function startTimer() {
             if (timerId !== null) return;
+            
+            // 시작하자마자 60초 화면 업데이트
+            updateDisplay();
+
             timerId = setInterval(() => {
+                // 1. 숫자를 먼저 줄입니다.
                 timeLeft--;
+                
+                // 2. 화면을 즉시 갱신합니다.
                 updateDisplay();
-                if (timeLeft <= 5 && timeLeft > 0) {
+
+                // 3. 갱신된 숫자(timeLeft)를 즉시 읽어줍니다.
+                if (timeLeft <= 10 && timeLeft > 0) {
                     document.getElementById('timer').classList.add('warning');
-                    playSound(440, 0.15, 0.2, 'sine'); 
+                    speakNumber(timeLeft); 
                 }
+
                 if (timeLeft <= 0) {
                     clearInterval(timerId);
                     document.getElementById('timer').innerText = "0";
@@ -125,6 +155,7 @@
             timerId = null;
             timeLeft = 60;
             document.getElementById('timer').classList.remove('warning');
+            window.speechSynthesis.cancel(); // 초기화 시 음성 중단
             updateDisplay();
         }
 
